@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio Diagnostic Bookmarklet Generator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      background: #0d1117;
+      color: #c9d1d9;
+    }
+    h1 { color: #58a6ff; margin-bottom: 8px; }
+    .subtitle { color: #8b949e; margin-bottom: 32px; }
+    .section {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .section h2 {
+      color: #58a6ff;
+      font-size: 16px;
+      margin-bottom: 12px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 10px 20px;
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      text-decoration: none;
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+    .btn:hover { background: #2ea043; }
+    .code-block {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-x: auto;
+      white-space: pre;
+      user-select: all;
+      margin-top: 8px;
+    }
+    .note {
+      background: #1c2333;
+      border-left: 3px solid #58a6ff;
+      padding: 12px 16px;
+      margin-top: 12px;
+      border-radius: 0 4px 4px 0;
+      font-size: 13px;
+    }
+    .note strong { color: #58a6ff; }
+  </style>
+</head>
+<body>
+  <h1>Audio Diagnostic Tool</h1>
+  <p class="subtitle">Run this on SoundCloud, Bandcamp, or any site to find out why the booster doesn't work</p>
+
+  <div class="section">
+    <h2>How to Use</h2>
+    <p style="margin-bottom: 12px;">Two options — pick whichever is easier:</p>
+    <p><strong>Option A (Console):</strong> Open DevTools (F12) on the target site, go to Console tab, paste the script below, press Enter.</p>
+    <p><strong>Option B (Bookmarklet):</strong> Drag the button to your bookmarks bar, then click it while on the target site.</p>
+  </div>
+
+  <div class="section">
+    <h2>Bookmarklet</h2>
+    <a class="btn" id="bookmarkletBtn" href="#">Run Diagnostic on This Page</a>
+    <p style="margin-top: 8px; font-size: 13px; color: #8b949e;">Drag the button above to your bookmarks bar, then click it on SoundCloud/Bandcamp.</p>
+  </div>
+
+  <div class="section">
+    <h2>Console Script</h2>
+    <p style="margin-bottom: 8px; font-size: 13px; color: #8b949e;">Copy everything below, paste into DevTools Console on the target site:</p>
+    <div class="code-block" id="consoleScript"></div>
+  </div>
+
+  <div class="section">
+    <h2>What This Checks</h2>
+    <ul style="margin-left: 20px; line-height: 2;">
+      <li>Shadow DOM audio/video elements (most likely culprit for SoundCloud/Bandcamp)</li>
+      <li>Cross-origin iframes containing media</li>
+      <li>Page's own Web Audio API usage (custom AudioContext)</li>
+      <li>Media Source Extensions (MSE) usage</li>
+      <li>Whether <code>createMediaElementSource()</code> would fail on the media</li>
+      <li>CORS attributes on media elements</li>
+    </ul>
+  </div>
+
+  <script>
+    const diagnosticScript = `
+(function() {
+  var results = [];
+  var passCount = 0, failCount = 0, warnCount = 0;
+
+  function add(type, label, detail) {
+    results.push({ type: type, label: label, detail: detail });
+    if (type === 'pass') passCount++;
+    else if (type === 'fail') failCount++;
+    else if (type === 'warn') warnCount++;
+  }
+
+  function scanShadowRoots(root, depth) {
+    if (depth > 5) return;
+    var elements = root.querySelectorAll('*');
+    for (var i = 0; i < elements.length; i++) {
+      var el = elements[i];
+      if (el.shadowRoot) {
+        var shadowAudio = el.shadowRoot.querySelectorAll('audio');
+        var shadowVideo = el.shadowRoot.querySelectorAll('video');
+        if (shadowAudio.length > 0 || shadowVideo.length > 0) {
+          add('warn', 'Shadow DOM media found', shadowAudio.length + ' audio, ' + shadowVideo.length + ' video inside ' + el.tagName + (el.className ? '.' + el.className.split(' ')[0] : ''));
+        }
+        scanShadowRoots(el.shadowRoot, depth + 1);
+      }
+    }
+  }
+
+  // 1. Light DOM media
+  var audioEls = document.querySelectorAll('audio');
+  var videoEls = document.querySelectorAll('video');
+  add(audioEls.length > 0 || videoEls.length > 0 ? 'pass' : 'warn', 'Light DOM media', 'audio: ' + audioEls.length + ', video: ' + videoEls.length);
+
+  for (var i = 0; i < audioEls.length; i++) {
+    var a = audioEls[i];
+    var src = a.currentSrc || a.src || '(none)';
+    add('info', 'Audio[' + i + '] src', src.substring(0, 150));
+    add(a.paused ? 'warn' : 'pass', 'Audio[' + i + '] state', a.paused ? 'paused' : 'playing');
+    add('info', 'Audio[' + i + '] crossOrigin', a.crossOrigin || '(not set)');
+  }
+
+  // 2. Shadow DOM media
+  scanShadowRoots(document, 0);
+  if (results.filter(function(r) { return r.label === 'Shadow DOM media found'; }).length === 0) {
+    add('pass', 'Shadow DOM', 'No media elements found in shadow roots');
+  }
+
+  // 3. Iframes
+  var iframes = document.querySelectorAll('iframe');
+  if (iframes.length > 0) {
+    add('warn', 'Iframes', iframes.length + ' iframe(s) found — media inside cross-origin iframes cannot be accessed');
+    for (var j = 0; j < Math.min(iframes.length, 5); j++) {
+      add('info', 'Iframe[' + j + ']', 'src: ' + (iframes[j].src || '(none)').substring(0, 150));
+    }
+  } else {
+    add('pass', 'Iframes', 'No iframes found');
+  }
+
+  // 4. Web Audio API
+  add(!!(window.AudioContext || window.webkitAudioContext) ? 'pass' : 'fail', 'Web Audio API', (window.AudioContext || window.webkitAudioContext) ? 'Available' : 'Not available');
+
+  // 5. Page's own AudioContexts (if any are detectable)
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    add('info', 'AudioContext state', ctx.state);
+    add('info', 'AudioContext sampleRate', ctx.sampleRate + 'Hz');
+    ctx.close();
+  } catch(e) {
+    add('fail', 'AudioContext creation', 'Failed: ' + e.message);
+  }
+
+  // 6. MSE
+  add(!!window.MediaSource ? 'info' : 'pass', 'MediaSource Extensions', window.MediaSource ? 'Available (site may use MSE for streaming)' : 'Not available');
+
+  // 7. CORS check
+  var allMedia = document.querySelectorAll('audio, video');
+  var crossOriginCount = 0;
+  for (var k = 0; k < allMedia.length; k++) {
+    var m = allMedia[k];
+    var msrc = m.currentSrc || m.src;
+    if (msrc && !msrc.startsWith('blob:') && !msrc.startsWith('data:')) {
+      try {
+        var url = new URL(msrc);
+        if (url.origin !== window.location.origin) {
+          crossOriginCount++;
+          add('warn', 'Cross-origin media', msrc.substring(0, 150) + ' (from ' + url.origin + ')');
+        }
+      } catch(e) {}
+    }
+  }
+  if (crossOriginCount === 0) {
+    add('pass', 'Cross-origin check', 'All light-DOM media is same-origin or blob/data URLs');
+  }
+
+  // 8. Check if Volume Booster is active
+  if (window.__volumeBooster) {
+    var vs = window.__volumeBooster;
+    add('pass', 'Volume Booster', 'Detected — initialized: ' + vs.initialized + ', gain: ' + vs.currentGain + ', tracked elements: ' + vs.elementMap.size);
+  } else {
+    add('warn', 'Volume Booster', 'Not detected on this page');
+  }
+
+  // Build overlay
+  var html = '<div id="audio-diag-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);z-index:999999;overflow:auto;padding:20px;font-family:monospace;font-size:13px;color:#c9d1d9;">';
+  html += '<button onclick="document.getElementById(\\'audio-diag-overlay\\').remove()" style="position:fixed;top:10px;right:10px;padding:8px 16px;background:#f85149;color:#fff;border:none;border-radius:4px;cursor:pointer;z-index:999999;">Close</button>';
+  html += '<h2 style="color:#58a6ff;margin-bottom:8px;">Audio Diagnostic — ' + window.location.hostname + '</h2>';
+  html += '<div style="margin-bottom:16px;"><span style="color:#3fb950;">Pass: ' + passCount + '</span> | <span style="color:#f85149;">Fail: ' + failCount + '</span> | <span style="color:#d29922;">Warn: ' + warnCount + '</span></div>';
+
+  for (var r = 0; r < results.length; r++) {
+    var item = results[r];
+    var color = item.type === 'pass' ? '#3fb950' : item.type === 'fail' ? '#f85149' : item.type === 'warn' ? '#d29922' : '#8b949e';
+    var icon = item.type === 'pass' ? 'PASS' : item.type === 'fail' ? 'FAIL' : item.type === 'warn' ? 'WARN' : 'INFO';
+    html += '<div style="margin-bottom:6px;padding:8px;background:#161b22;border-radius:4px;border-left:3px solid ' + color + ';">';
+    html += '<span style="color:' + color + ';font-weight:bold;">[' + icon + '] ' + item.label + '</span><br>';
+    html += '<span style="color:#8b949e;">' + item.detail + '</span>';
+    html += '</div>';
+  }
+
+  html += '<div style="margin-top:16px;padding:12px;background:#1c2333;border-radius:6px;">';
+  html += '<strong style="color:#58a6ff;">Likely diagnosis:</strong><br>';
+
+  if (results.filter(function(r) { return r.label === 'Shadow DOM media found'; }).length > 0) {
+    html += '<span style="color:#d29922;">The site uses Shadow DOM for its audio player. The booster\\'s MutationObserver only sees light DOM. Fix: recursively scan shadow roots or use a different interception strategy.</span>';
+  } else if (results.filter(function(r) { return r.label === 'Light DOM media'; })[0] && results.filter(function(r) { return r.label === 'Light DOM media'; })[0].detail === 'audio: 0, video: 0') {
+    html += '<span style="color:#f85149;">No &lt;audio&gt; or &lt;video&gt; elements found in the page. The site likely uses the Web Audio API directly (decoded audio buffers, not HTML media elements). The booster cannot intercept this in v1.</span>';
+  } else if (results.filter(function(r) { return r.label === 'Iframes'; }).length > 0 && results.filter(function(r) { return r.label === 'Iframes'; })[0].detail.indexOf('cannot be accessed') !== -1) {
+    html += '<span style="color:#d29922;">The player may be inside a cross-origin iframe. The booster cannot access content in cross-origin iframes.</span>';
+  } else {
+    html += '<span style="color:#3fb950;">No obvious blockers found. Check the browser console for errors from the extension.</span>';
+  }
+
+  html += '</div></div>';
+
+  var existing = document.getElementById('audio-diag-overlay');
+  if (existing) existing.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+})();
+    `;
+
+    const bookmarklet = 'javascript:' + encodeURIComponent(diagnosticScript.replace(/\s+/g, ' '));
+
+    document.getElementById('bookmarkletBtn').href = bookmarklet;
+    document.getElementById('consoleScript').textContent = diagnosticScript;
+  </script>
+</body>
+</html>

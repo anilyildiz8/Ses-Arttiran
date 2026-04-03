@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Volume Booster 600%</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 280px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .header svg {
+      width: 24px;
+      height: 24px;
+      fill: #00d4aa;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .disabled-state {
+      text-align: center;
+      padding: 12px 0;
+    }
+
+    .disabled-state p {
+      font-size: 13px;
+      color: #a0a0a0;
+      margin-bottom: 12px;
+    }
+
+    .enable-btn {
+      width: 100%;
+      padding: 10px 16px;
+      background: #00d4aa;
+      color: #1a1a2e;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .enable-btn:hover {
+      background: #00b894;
+    }
+
+    .enable-btn:active {
+      background: #00a381;
+    }
+
+    .enabled-state {
+      display: none;
+    }
+
+    .gain-display {
+      text-align: center;
+      margin-bottom: 12px;
+    }
+
+    .gain-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #00d4aa;
+    }
+
+    .gain-label {
+      font-size: 12px;
+      color: #a0a0a0;
+    }
+
+    .slider-container {
+      margin-bottom: 12px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: #2a2a4a;
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      background: #00d4aa;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.1);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      background: #00d4aa;
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+    }
+
+    .disable-btn {
+      width: 100%;
+      padding: 8px 16px;
+      background: transparent;
+      color: #f85149;
+      border: 1px solid #f85149;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 12px;
+    }
+
+    .disable-btn:hover {
+      background: #f85149;
+      color: #1a1a2e;
+    }
+
+    .preset-buttons {
+      display: flex;
+      gap: 6px;
+    }
+
+    .preset-btn {
+      flex: 1;
+      padding: 6px 4px;
+      background: #2a2a4a;
+      color: #e0e0e0;
+      border: 1px solid #3a3a5a;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .preset-btn:hover {
+      background: #3a3a5a;
+      border-color: #00d4aa;
+    }
+
+    .preset-btn.active {
+      background: #00d4aa;
+      color: #1a1a2e;
+      border-color: #00d4aa;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+    </svg>
+    <h1>Volume Booster 600%</h1>
+  </div>
+
+  <div class="disabled-state" id="disabledState">
+    <p>Boost volume on this tab</p>
+    <button class="enable-btn" id="enableBtn">Enable on this tab</button>
+  </div>
+
+  <div class="enabled-state" id="enabledState">
+    <div class="gain-display">
+      <div class="gain-value" id="gainValue">100%</div>
+      <div class="gain-label">Volume Boost</div>
+    </div>
+
+    <div class="slider-container">
+      <input type="range" id="gainSlider" min="0" max="600" value="100" step="10">
+    </div>
+
+    <div class="preset-buttons">
+      <button class="preset-btn" data-gain="0">0%</button>
+      <button class="preset-btn" data-gain="100">100%</button>
+      <button class="preset-btn" data-gain="200">200%</button>
+      <button class="preset-btn" data-gain="400">400%</button>
+      <button class="preset-btn" data-gain="600">600%</button>
+    </div>
+
+    <button class="disable-btn" id="disableBtn">Disable on this tab</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
