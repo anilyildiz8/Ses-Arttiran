@@ -43,7 +43,7 @@
       }
 
       if (message.type === 'GET_TAB_GAIN') {
-        const gain = tabGains.get(tabId) || 1.0;
+        const gain = tabGains.get(tabId) ?? 1.0;
         sendResponse({ gain: gain });
         return;
       }
