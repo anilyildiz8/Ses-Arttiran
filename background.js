@@ -1,120 +1,57 @@
 (function () {
   const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
-  const tabState = new Map();
-
-  function getDefaultState() {
-    return { enabled: false, gain: 1.0 };
-  }
+  // Stores gain per tab (default 1.0 = 100% = no boost)
+  const tabGains = new Map();
 
   async function getActiveTabId() {
     const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
     return tabs[0] ? tabs[0].id : null;
   }
 
-  async function sendMessageToTab(tabId, message) {
+  async function sendGainToTab(tabId, gain) {
     try {
-      const response = await browserAPI.tabs.sendMessage(tabId, message);
-      if (browserAPI.runtime.lastError) {
-        console.warn('[Background] sendMessage failed:', browserAPI.runtime.lastError.message);
-        return null;
-      }
-      return response;
-    } catch (e) {
-      console.warn('[Background] sendMessage exception:', e.message);
-      return null;
-    }
-  }
-
-  async function injectContentScript(tabId) {
-    try {
-      await browserAPI.scripting.executeScript({
-        target: { tabId: tabId },
-        files: ['content.js']
+      await browserAPI.tabs.sendMessage(tabId, {
+        type: 'SET_GAIN',
+        gain: gain
       });
-      return true;
     } catch (e) {
-      console.error('[Background] Injection failed:', e.message);
-      return false;
+      // Content script might not be loaded yet (tab opened before extension install).
+      // Try injecting it as a fallback.
+      try {
+        await browserAPI.scripting.executeScript({
+          target: { tabId: tabId },
+          files: ['content.js']
+        });
+        // Retry after injection
+        await browserAPI.tabs.sendMessage(tabId, {
+          type: 'SET_GAIN',
+          gain: gain
+        });
+      } catch (e2) {
+        console.warn('[Background] Could not reach tab:', e2.message);
+      }
     }
   }
 
   browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
-      let tabId;
-      if (sender.tab && sender.tab.id) {
-        tabId = sender.tab.id;
-      } else {
-        tabId = await getActiveTabId();
-        if (!tabId) {
-          sendResponse({ error: 'No active tab' });
-          return;
-        }
-      }
-
-      if (message.type === 'GET_ACTIVE_TAB_STATE') {
-        const state = tabState.get(tabId) || getDefaultState();
-        sendResponse(state);
+      const tabId = (sender.tab && sender.tab.id) || (await getActiveTabId());
+      if (!tabId) {
+        sendResponse({ error: 'No active tab' });
         return;
       }
 
-      if (message.type === 'ENABLE_ON_ACTIVE_TAB') {
-        let state = tabState.get(tabId) || getDefaultState();
-        state.enabled = true;
-        tabState.set(tabId, state);
-
-        const injected = await injectContentScript(tabId);
-        if (!injected) {
-          state.enabled = false;
-          tabState.set(tabId, state);
-          sendResponse({ enabled: false, gain: state.gain, error: 'Injection failed' });
-          return;
-        }
-
-        const initResponse = await sendMessageToTab(tabId, {
-          type: 'INIT_AUDIO_BOOST',
-          gain: state.gain
-        });
-
-        if (!initResponse || !initResponse.enabled) {
-          state.enabled = false;
-          tabState.set(tabId, state);
-          sendResponse({ enabled: false, gain: state.gain, error: initResponse?.error || 'Init failed' });
-          return;
-        }
-
-        sendResponse({ enabled: true, gain: initResponse.gain });
+      if (message.type === 'GET_TAB_GAIN') {
+        const gain = tabGains.get(tabId) || 1.0;
+        sendResponse({ gain: gain });
         return;
       }
 
-      if (message.type === 'SET_ACTIVE_TAB_GAIN') {
+      if (message.type === 'SET_TAB_GAIN') {
         const gain = Math.max(0, Math.min(6, message.gain));
-        let state = tabState.get(tabId) || getDefaultState();
-        state.gain = gain;
-        tabState.set(tabId, state);
-
-        const response = await sendMessageToTab(tabId, {
-          type: 'UPDATE_AUDIO_BOOST',
-          gain: gain
-        });
-
-        if (!response || !response.ok) {
-          state.enabled = false;
-          tabState.set(tabId, state);
-          sendResponse({ ok: false, error: response?.error || 'Update failed' });
-          return;
-        }
-
-        sendResponse({ ok: true });
-        return;
-      }
-
-      if (message.type === 'DISABLE_ON_ACTIVE_TAB') {
-        await sendMessageToTab(tabId, {
-          type: 'DISABLE_AUDIO_BOOST'
-        });
-
-        tabState.set(tabId, getDefaultState());
+        tabGains.set(tabId, gain);
+        await sendGainToTab(tabId, gain);
         sendResponse({ ok: true });
         return;
       }
@@ -126,16 +63,6 @@
   });
 
   browserAPI.tabs.onRemoved.addListener((tabId) => {
-    tabState.delete(tabId);
-  });
-
-  browserAPI.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    if (changeInfo.status === 'loading') {
-      const state = tabState.get(tabId);
-      if (state && state.enabled) {
-        state.enabled = false;
-        tabState.set(tabId, state);
-      }
-    }
+    tabGains.delete(tabId);
   });
 })();
